@@ -17,6 +17,7 @@ import pytest
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 
 # The chrome and chromedriver installation can take some time.
 # Give 5 minutes to install everything.
@@ -55,4 +56,11 @@ def test_should_be_able_to_navigate_to_google_com(driver):
 @pytest.mark.timeout(TIMEOUT)
 def test_issue_reproduction(driver):
     """Add test reproducing the issue here."""
-    pass
+    driver.get("https://www.google.com")
+    search_box = driver.find_element(By.NAME, "q")
+    # prepare to send at least 53 characters by the issue description
+    text = "a123456789b123456789c123456789d123456789e123456789f123456789g123456789h123456789i123456789j123456789k123456789l123456789"
+    search_box.send_keys(text)
+    current_text = search_box.get_attribute("value")
+
+    assert current_text == text
