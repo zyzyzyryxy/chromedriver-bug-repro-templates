@@ -14,6 +14,8 @@
 
 import logging
 import pytest
+import threading
+import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -54,5 +56,105 @@ def test_should_be_able_to_navigate_to_google_com(driver):
 
 @pytest.mark.timeout(TIMEOUT)
 def test_issue_reproduction(driver):
-    """Add test reproducing the issue here."""
-    pass
+    """
+    Reproduces Issue 468228355: Chromedriver process crashes when it is processing
+    a command for a secondary window that is closing.
+    """
+    def spam_with_requests(d, stop_evt):
+        # Make repeated requests to the target window until stop_event is set
+        while not stop_evt.is_set():
+            try:
+                d.execute_script("return !!window.test;")
+            except Exception:
+                # when window is closed this will eventually result in an error
+                break
+
+    def close_window_while_spamming_with_requests(d, child_window, base_window):
+        # Close window after timeout while making repeated requests
+        stop_evt = threading.Event()
+
+        d.switch_to.window(child_window)
+
+        # Start thread to make repeated requests to the child window
+        request_thread = threading.Thread(
+            target=spam_with_requests,
+            args=(d, stop_evt),
+            daemon=True
+        )
+
+        try:
+            # Navigate the window before closing
+            # Using data URL for empty page since we don't have the server setup from the original test
+            logging.info("Navigating window before closing...")
+            d.get("data:text/html,<html><body>Empty</body></html>")
+            
+            # Navigate the window
+            logging.info("Starting timeout to close the window...")
+            # Use setTimeout to trigger window.close() asynchronously from within the browser
+            # This creates the race condition with the external driver commands
+            d.execute_script('setTimeout(function() { window.close(); }, 200);')
+            
+            request_thread.start()
+            time.sleep(0.25)
+        finally:
+            # Ensure request thread stops
+            stop_evt.set()
+            if request_thread.is_alive():
+                request_thread.join(timeout=1.0)
+            
+            # Switch back to base window to avoid "no such window" errors in main loop
+            try:
+                d.switch_to.window(base_window)
+            except Exception:
+                # If base window is somehow gone (shouldn't happen), try to recover handle
+                handles = d.window_handles
+                if handles:
+                    d.switch_to.window(handles[0])
+
+    # Setup the main page with a button to open a new window
+    driver.get("data:text/html,"
+               "<!doctype html><meta charset='utf-8'><title>repro</title>"
+               "<button id='btn'>open and maybe close</button>"
+               "<script>"
+               "const btn=document.getElementById('btn');"
+               "btn.onclick=()=>{"
+               "const w=window.open("
+               "'about:blank',"
+               "'_blank',"
+               "'width=400,height=300,left=100,top=100,resizable=yes,"
+               "scrollbars=yes,status=yes,menubar=no,"
+               "toolbar=no,location=no');};"
+               "</script>")
+
+    # The crash doesn't consistently reproduce
+    # it generally happens within 10 iterations
+    for i in range(20):
+        logging.info(f"Test iteration {i+1}/20")
+
+        # Click the button to open a new window
+        # We need to ensure the button is there and clickable
+        btn = driver.find_element("css selector", "#btn")
+        btn.click()
+
+        # Wait for the new window to appear
+        # Simple wait loop since we don't have WebDriverWait imported
+        # and we want to keep imports minimal if possible, but a short sleep is safer
+        time.sleep(0.5)
+
+        # Switch to the newest window
+        handles = driver.window_handles
+        if len(handles) < 2:
+            # Retry waiting if window didn't appear immediately
+            time.sleep(1)
+            handles = driver.window_handles
+            if len(handles) < 2:
+                raise RuntimeError("Second window did not open")
+        
+        base = handles[0]
+        child = handles[-1]
+
+        # Close with timeout mechanism
+        close_window_while_spamming_with_requests(driver, child, base)
+
+        time.sleep(0.3)
+
