@@ -37,7 +37,7 @@ public class RegressionTest {
     // By default, the test uses the latest stable Chrome version.
     // Replace the "stable" with the specific browser version if needed,
     // e.g. 'canary', '115' or '144.0.7534.0' for example.
-    options.setBrowserVersion("stable");
+    options.setBrowserVersion("121");
 
     ChromeDriverService service =
         new ChromeDriverService.Builder()
@@ -65,6 +65,30 @@ public class RegressionTest {
 
   @Test
   public void ISSUE_REPRODUCTION() {
-    // Add test reproducing the issue here.
+    // Print the actual browser version being used
+    System.out.println("Browser Version: " + ((ChromeDriver) driver).getCapabilities().getBrowserVersion());
+
+    // 1. Navigate to a page that opens a popup.
+    String html = "<html><body><script>" +
+            "var win = window.open('about:blank', '_blank', 'width=200,height=200');" +
+            "document.body.setAttribute('data-popup-opened', win ? 'true' : 'false');" +
+            "</script></body></html>";
+    driver.get("data:text/html," + html);
+
+    // 2. Wait a bit for the popup to open.
+    try {
+      Thread.sleep(2000);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
+
+    // Check if the window object was null (indication of blocking)
+    String popupOpened = driver.findElement(org.openqa.selenium.By.tagName("body")).getAttribute("data-popup-opened");
+    System.out.println("Did javascript report window.open success? " + popupOpened);
+
+    // 3. Verify that the popup opened.
+    int handleCount = driver.getWindowHandles().size();
+    System.out.println("Window handles found: " + handleCount);
+    assertEquals(2, handleCount, "Expected 2 windows (main + popup), but found: " + handleCount);
   }
 }
