@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reproduction Page</title>
+</head>
+<body>
+    <!-- Simulating the structure from the bug report -->
+    <table>
+        <tbody>
+            <tr>
+                <td></td>
+                <td>
+                    <center>
+                        <div>
+                            <form action="about:blank" onsubmit="alert('Login Alert'); return true;">
+                                <input type="text" id="userNameLi">
+                                <input type="password" id="userPasswordLi">
+                                <button type="submit">Login</button>
+                            </form>
+                        </div>
+                    </center>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>

@@ -19,10 +19,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.openqa.selenium.Alert;
+import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeDriverService;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import java.time.Duration;
 
 public class RegressionTest {
 
@@ -65,6 +71,27 @@ public class RegressionTest {
 
   @Test
   public void ISSUE_REPRODUCTION() {
-    // Add test reproducing the issue here.
+    String testFile = "file://" + System.getProperty("user.dir") + "/test.html";
+    driver.get(testFile);
+
+    Duration timeoutDuration = Duration.ofSeconds(5);
+    WebDriverWait wait = new WebDriverWait(driver, timeoutDuration);
+
+    WebElement usernameInput = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("userNameLi")));
+    WebElement passwordInput = driver.findElement(By.id("userPasswordLi"));
+
+    usernameInput.sendKeys("0001");
+    passwordInput.sendKeys("test01");
+
+    // The xpath from the bug report matches the structure in test.html
+    WebElement loginButton = driver.findElement(By.xpath("/html/body/table/tbody/tr/td[2]/center/div/form/button"));
+    loginButton.click();
+
+    wait.until(ExpectedConditions.alertIsPresent());
+
+    Alert alert = driver.switchTo().alert();
+    
+    // The bug happens here: unhandled inspector error: {"code":-32000,"message":"Not attached to an active page"}
+    alert.accept();
   }
 }
