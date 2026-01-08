@@ -37,7 +37,6 @@ public class RegressionTest {
   @BeforeEach
   public void setUp() {
     ChromeOptions options = new ChromeOptions();
-    options.addArguments("--headless");
     options.addArguments("--no-sandbox");
 
     // By default, the test uses the latest stable Chrome version.
@@ -52,6 +51,7 @@ public class RegressionTest {
             .build();
 
     driver = new ChromeDriver(service, options);
+    driver.manage().window().maximize();
   }
 
   @AfterEach
