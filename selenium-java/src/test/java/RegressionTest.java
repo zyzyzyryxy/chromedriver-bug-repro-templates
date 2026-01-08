@@ -91,6 +91,8 @@ public class RegressionTest {
 
     Alert alert = driver.switchTo().alert();
     
+    wait.until(ExpectedConditions.alertIsPresent());
+
     // The bug happens here: unhandled inspector error: {"code":-32000,"message":"Not attached to an active page"}
     alert.accept();
   }
