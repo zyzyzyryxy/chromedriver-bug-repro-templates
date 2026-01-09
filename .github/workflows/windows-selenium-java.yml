@@ -27,23 +27,84 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
     - name: Setup Mock ADB
       run: |
         New-Item -ItemType Directory -Force -Path "mock-adb"
         $adbPath = "mock-adb\adb.bat"
+        
+        # 1. Create the Mock ADB Server (Python)
+        $serverScript = @"
+        import socket
+        import struct
+
+        def send_packet(conn, msg):
+            encoded = msg.encode('utf-8')
+            length = '{:04x}'.format(len(encoded)).encode('utf-8')
+            conn.send(b'OKAY' + length + encoded)
+
+        def handle_client(conn):
+            try:
+                # Read 4-byte length
+                len_bytes = conn.recv(4)
+                if not len_bytes: return
+                length = int(len_bytes.decode('utf-8'), 16)
+                
+                # Read command
+                cmd_bytes = conn.recv(length)
+                cmd = cmd_bytes.decode('utf-8')
+                print(f"Received command: {cmd}")
+
+                if cmd == 'host:version':
+                    send_packet(conn, '0029') # Version 41
+                elif cmd == 'host:devices':
+                    send_packet(conn, 'emulator-5554\tdevice\n')
+                elif cmd.startswith('host:transport:'):
+                    conn.send(b'OKAY') # Switch to transport mode
+                elif cmd.startswith('host-serial:') and 'forward' in cmd:
+                    # forwarding request
+                    send_packet(conn, '12345') # Mock port
+                elif cmd == 'host:kill':
+                    conn.send(b'OKAY')
+                else:
+                    # Default OKAY for unknown commands to prevent crashing
+                    conn.send(b'OKAY') 
+            except Exception as e:
+                print(f"Error: {e}")
+            finally:
+                conn.close()
+
+        def main():
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(('127.0.0.1', 5037))
+            s.listen(5)
+            print("Mock ADB Server listening on 5037...")
+            
+            while True:
+                conn, addr = s.accept()
+                handle_client(conn)
+
+        if __name__ == '__main__':
+            main()
+        "@
+        Set-Content -Path "mock-adb\mock_adb_server.py" -Value $serverScript
+
+        # 2. Start the Server in background
+        Start-Process -FilePath "python" -ArgumentList "mock-adb\mock_adb_server.py" -WindowStyle Hidden
+
+        # 3. Create the Mock ADB CLI (Batch)
         $scriptContent = @"
         @echo off
         set args=%*
         
+        rem If asking for devices, print them
         if "%1"=="devices" (
             echo List of devices attached
             echo emulator-5554	device
             exit /b 0
         )
         
+        rem If trying to start server, just say success (it's already running via python)
         if "%1"=="start-server" (
             exit /b 0
         )
@@ -54,24 +115,7 @@ jobs:
             exit /b 0
         )
         
-        echo %args% | findstr /C:"ro.build.version.release" >nul
-        if %errorlevel%==0 (
-            echo 11
-            exit /b 0
-        )
-        
-        echo %args% | findstr /C:"ro.build.version.sdk" >nul
-        if %errorlevel%==0 (
-            echo 30
-            exit /b 0
-        )
-
-        echo %args% | findstr /C:"sys.boot_completed" >nul
-        if %errorlevel%==0 (
-            echo 1
-            exit /b 0
-        )
-        
+        rem Mock package checks
         echo %args% | findstr /C:"pm list packages" >nul
         if %errorlevel%==0 (
             echo package:com.android.chrome
@@ -83,36 +127,23 @@ jobs:
             echo versionName=91.0.4472.101
             exit /b 0
         )
-        
-        echo %args% | findstr /C:"forward" >nul
-        if %errorlevel%==0 (
-            echo 5555
-            exit /b 0
-        )
-        
-        rem Default success for other commands (push, shell am start, etc.)
+
+        rem Always return success for everything else
         exit /b 0
         "@
         
         Set-Content -Path $adbPath -Value $scriptContent
+        Copy-Item $adbPath "mock-adb\adb.cmd"
         
         # Add mock-adb to PATH
         echo "$PWD\mock-adb" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        
-        # Verify it works
-        & "mock-adb\adb.bat" devices
       shell: powershell
 
     - name: Run test
       working-directory: selenium-java
       run: mvn test
       env:
-        # Ensure we use the mock, though PATH should handle it.
-        # Sometimes tools look for ANDROID_HOME.
-        ANDROID_HOME: ${{ github.workspace }}\mock-android-home
-
-    - name: Run tests
-      run: mvn test
+        ANDROID_HOME: ${{ github.workspace }}\mock-adb
 
     - name: Dump log
       if: always()
