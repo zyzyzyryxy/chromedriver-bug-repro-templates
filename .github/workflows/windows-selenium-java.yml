@@ -49,19 +49,42 @@ jobs:
         $path = "$env:ANDROID_HOME/platform-tools/adb.exe"
         echo "Waiting for device to appear on ADB..."
         
-        # Wait up to 300 seconds for the device to appear
         $timeout = 300
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        $deviceConnected = $false
+
         while ($timer.Elapsed.TotalSeconds -lt $timeout) {
             $devices = & $path devices
             if ($devices -match "emulator-5554\s+device") {
                 echo "Device connected!"
+                $deviceConnected = $true
                 break
             }
             if ($devices -match "emulator-5554\s+offline") {
                 echo "Device is offline, waiting..."
             }
+            
+            # Check if emulator process is still alive
+            $emulatorProcess = Get-Process -Name "emulator" -ErrorAction SilentlyContinue
+            if (-not $emulatorProcess) {
+                echo "Emulator process has died!"
+                break
+            }
+
             Start-Sleep -Seconds 5
+        }
+
+        if (-not $deviceConnected) {
+            echo "Emulator failed to connect within timeout or process died."
+            echo "--- Emulator Stdout ---"
+            if (Test-Path "${{ env.ANDROID_HOME }}/emulator/emulator.log") {
+                Get-Content "${{ env.ANDROID_HOME }}/emulator/emulator.log" | Select-Object -Last 100
+            }
+            echo "--- Emulator Stderr ---"
+             if (Test-Path "${{ env.ANDROID_HOME }}/emulator/emulator_err.log") {
+                Get-Content "${{ env.ANDROID_HOME }}/emulator/emulator_err.log" | Select-Object -Last 100
+            }
+            exit 1
         }
 
         echo "Waiting for boot completion..."
@@ -69,7 +92,7 @@ jobs:
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         while ($timer.Elapsed.TotalSeconds -lt $timeout) {
             $status = & $path shell getprop sys.boot_completed
-            if ($status.Trim() -eq "1") { 
+            if ($status -and $status.Trim() -eq "1") { 
                 $boot_completed = $true
                 echo "Boot completed!"
                 break 
@@ -80,14 +103,6 @@ jobs:
         
         if (-not $boot_completed) {
             echo "Emulator failed to boot within timeout."
-            echo "--- Emulator Stdout ---"
-            if (Test-Path "${{ env.ANDROID_HOME }}/emulator/emulator.log") {
-                Get-Content "${{ env.ANDROID_HOME }}/emulator/emulator.log" | Select-Object -Last 100
-            }
-            echo "--- Emulator Stderr ---"
-             if (Test-Path "${{ env.ANDROID_HOME }}/emulator/emulator_err.log") {
-                Get-Content "${{ env.ANDROID_HOME }}/emulator/emulator_err.log" | Select-Object -Last 100
-            }
             exit 1
         }
       shell: powershell
