@@ -50,7 +50,7 @@ jobs:
         $boot_completed = $false
         while (-not $boot_completed) {
             $status = & $path shell getprop sys.boot_completed
-            if ($status -trim -eq "1") { $boot_completed = $true }
+            if ($status.Trim() -eq "1") { $boot_completed = $true }
             else { Start-Sleep -Seconds 5 }
         }
       shell: powershell
