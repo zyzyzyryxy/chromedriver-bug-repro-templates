@@ -40,7 +40,7 @@ jobs:
       working-directory: ${{ env.ANDROID_HOME }}/emulator
       run: |
         echo "Starting emulator..."
-        $p = Start-Process -FilePath .\emulator.exe -ArgumentList "-avd test -verbose -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim -accel auto" -PassThru -RedirectStandardOutput "emulator.log" -RedirectStandardError "emulator_err.log"
+        $p = Start-Process -FilePath .\emulator.exe -ArgumentList "-avd test -verbose -no-window -gpu off -no-audio -no-boot-anim -no-snapshot" -PassThru -RedirectStandardOutput "emulator.log" -RedirectStandardError "emulator_err.log"
         echo "Emulator process started with ID: $($p.Id)"
       shell: powershell
 
