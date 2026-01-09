@@ -1,0 +1,63 @@
+name: Windows Selenium Java
+
+on:
+  push:
+    paths:
+      - 'selenium-java/**'
+      - '.github/workflows/windows-selenium-java.yml'
+  pull_request:
+    paths:
+      - 'selenium-java/**'
+      - '.github/workflows/windows-selenium-java.yml'
+
+defaults:
+  run:
+    working-directory: selenium-java
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Install Android System Image
+      run: sdkmanager "system-images;android-30;google_apis;x86_64" "platform-tools" "platforms;android-30"
+
+    - name: Create AVD
+      run: echo "no" | avdmanager create avd -n test -k "system-images;android-30;google_apis;x86_64" --force
+
+    - name: Start Emulator
+      working-directory: ${{ env.ANDROID_HOME }}/emulator
+      run: |
+        Start-Process -FilePath .\emulator.exe -ArgumentList "-avd test -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim -accel on"
+      shell: powershell
+
+    - name: Wait for Emulator
+      run: |
+        $path = "$env:ANDROID_HOME/platform-tools/adb.exe"
+        & $path wait-for-device
+        # Simple wait loop for boot completion
+        $boot_completed = $false
+        while (-not $boot_completed) {
+            $status = & $path shell getprop sys.boot_completed
+            if ($status -trim -eq "1") { $boot_completed = $true }
+            else { Start-Sleep -Seconds 5 }
+        }
+      shell: powershell
+
+    - name: Run tests
+      run: mvn test
+
+    - name: Dump log
+      if: always()
+      run: cat chromedriver.log
