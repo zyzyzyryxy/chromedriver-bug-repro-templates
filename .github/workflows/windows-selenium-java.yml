@@ -31,10 +31,10 @@ jobs:
       uses: android-actions/setup-android@v3
 
     - name: Install Android System Image
-      run: sdkmanager "system-images;android-30;google_apis;x86_64" "platform-tools" "platforms;android-30"
+      run: sdkmanager "system-images;android-25;google_apis;x86" "platform-tools" "platforms;android-25"
 
     - name: Create AVD
-      run: echo "no" | avdmanager create avd -n test -k "system-images;android-30;google_apis;x86_64" --force
+      run: echo "no" | avdmanager create avd -n test -k "system-images;android-25;google_apis;x86" --force
 
     - name: Start Emulator
       working-directory: ${{ env.ANDROID_HOME }}/emulator
