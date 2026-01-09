@@ -39,19 +39,56 @@ jobs:
     - name: Start Emulator
       working-directory: ${{ env.ANDROID_HOME }}/emulator
       run: |
-        Start-Process -FilePath .\emulator.exe -ArgumentList "-avd test -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim -accel on"
+        echo "Starting emulator..."
+        $p = Start-Process -FilePath .\emulator.exe -ArgumentList "-avd test -verbose -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim -accel auto" -PassThru -RedirectStandardOutput "emulator.log" -RedirectStandardError "emulator_err.log"
+        echo "Emulator process started with ID: $($p.Id)"
       shell: powershell
 
     - name: Wait for Emulator
       run: |
         $path = "$env:ANDROID_HOME/platform-tools/adb.exe"
-        & $path wait-for-device
-        # Simple wait loop for boot completion
+        echo "Waiting for device to appear on ADB..."
+        
+        # Wait up to 300 seconds for the device to appear
+        $timeout = 300
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($timer.Elapsed.TotalSeconds -lt $timeout) {
+            $devices = & $path devices
+            if ($devices -match "emulator-5554\s+device") {
+                echo "Device connected!"
+                break
+            }
+            if ($devices -match "emulator-5554\s+offline") {
+                echo "Device is offline, waiting..."
+            }
+            Start-Sleep -Seconds 5
+        }
+
+        echo "Waiting for boot completion..."
         $boot_completed = $false
-        while (-not $boot_completed) {
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($timer.Elapsed.TotalSeconds -lt $timeout) {
             $status = & $path shell getprop sys.boot_completed
-            if ($status.Trim() -eq "1") { $boot_completed = $true }
-            else { Start-Sleep -Seconds 5 }
+            if ($status.Trim() -eq "1") { 
+                $boot_completed = $true
+                echo "Boot completed!"
+                break 
+            }
+            echo "Boot status: $status. Waiting..."
+            Start-Sleep -Seconds 10
+        }
+        
+        if (-not $boot_completed) {
+            echo "Emulator failed to boot within timeout."
+            echo "--- Emulator Stdout ---"
+            if (Test-Path "${{ env.ANDROID_HOME }}/emulator/emulator.log") {
+                Get-Content "${{ env.ANDROID_HOME }}/emulator/emulator.log" | Select-Object -Last 100
+            }
+            echo "--- Emulator Stderr ---"
+             if (Test-Path "${{ env.ANDROID_HOME }}/emulator/emulator_err.log") {
+                Get-Content "${{ env.ANDROID_HOME }}/emulator/emulator_err.log" | Select-Object -Last 100
+            }
+            exit 1
         }
       shell: powershell
 
